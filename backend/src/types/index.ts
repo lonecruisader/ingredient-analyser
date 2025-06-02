@@ -13,6 +13,7 @@ export interface SearchResponse {
   total: number;
   page: number;
   pageSize: number;
+  cached: boolean;
 }
 
 export interface SearchError {

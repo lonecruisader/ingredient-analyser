@@ -65,7 +65,7 @@ A web application that helps environmentally conscious consumers make informed d
    npm run dev
    ```
 
-5. Open your browser and navigate to `http://localhost:3000`
+5. Open your browser and navigate to `http://localhost:3001`
 
 ## Development
 

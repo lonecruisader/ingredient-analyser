@@ -2,10 +2,18 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import rateLimit from 'express-rate-limit';
-import searchRouter from './routes/search';
 
 // Load environment variables
 dotenv.config();
+
+// Verify OpenAI API key is set
+if (!process.env.OPENAI_API_KEY) {
+  console.error('OPENAI_API_KEY is not set in environment variables');
+  process.exit(1);
+}
+
+// Import routes after environment variables are loaded
+import searchRouter from './routes/search';
 
 const app = express();
 const port = process.env.PORT || 3001;

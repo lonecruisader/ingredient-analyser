@@ -1,14 +1,10 @@
-import { IngredientEnvironmentalAnalysis } from '../utils/environmentalImpact';
-import { FormattedAnalysis } from '../utils/ingredientFormatter';
-import { ValidationResult } from '../utils/classificationValidator';
-
 export interface Product {
   id: string;
   name: string;
   brand: string;
   url: string;
   imageUrl: string;
-  price: number;
+  price: string;
   ingredients?: string[];
   ingredientAnalysis?: {
     classification: [string, string][];
@@ -17,7 +13,15 @@ export interface Product {
       synthetic: number;
     };
     environmentalImpact?: {
-      analysis: IngredientEnvironmentalAnalysis[];
+      analysis: Array<{
+        ingredient: string;
+        impact: {
+          biodegradability: string;
+          toxicity: string;
+          sustainability: string;
+          notes: string;
+        };
+      }>;
       overallImpact: {
         averageBiodegradability: number;
         averageToxicity: number;
@@ -26,8 +30,6 @@ export interface Product {
       };
     };
   };
-  formattedAnalysis?: FormattedAnalysis;
-  validationResult?: ValidationResult;
 }
 
 export interface SearchResponse {

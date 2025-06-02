@@ -2,10 +2,16 @@ import { Router, Request, Response } from 'express';
 import { SephoraScraper } from '../services/scraper';
 import { CacheService } from '../services/cache';
 import { SearchResponse, SearchError } from '../types';
+import { LLMService } from '../services/llm';
+import { calculatePercentages } from '../utils/percentageCalculator';
+import { EnvironmentalImpactAnalyzer } from '../utils/environmentalImpact';
+import { IngredientFormatter } from '../utils/ingredientFormatter';
+import { ClassificationValidator } from '../utils/classificationValidator';
 
 const router = Router();
 const scraper = new SephoraScraper();
 const cache = new CacheService();
+const llmService = LLMService.getInstance();
 
 // Test Redis connection
 router.get('/cache/test', async (req: Request, res: Response) => {
@@ -42,33 +48,53 @@ router.get('/products', async (req: Request, res: Response) => {
       return res.status(400).json(error);
     }
 
-    console.log('Processing search request:', { query, page, pageSize, forceRefresh });
-
     // Check cache first if not forcing refresh
     if (forceRefresh !== 'true') {
-      const cachedProducts = await cache.getCachedProduct(query as string);
-      if (cachedProducts) {
-        console.log('Returning cached results for query:', query);
-        const response: SearchResponse = {
-          products: cachedProducts,
-          total: cachedProducts.length,
-          page: parseInt(page as string),
-          pageSize: parseInt(pageSize as string),
-          cached: true
-        };
-        return res.json(response);
+      try {
+        const cachedProducts = await cache.getCachedProduct(query as string);
+        if (cachedProducts) {
+          const response: SearchResponse = {
+            products: cachedProducts,
+            total: cachedProducts.length,
+            page: parseInt(page as string),
+            pageSize: parseInt(pageSize as string),
+            cached: true
+          };
+          return res.json(response);
+        }
+      } catch (cacheError) {
+        console.error('Error retrieving or processing cached data:', cacheError);
+        // Continue to fetch from Sephora if cache fails
       }
     }
 
-    console.log('Cache miss, fetching from Sephora for query:', query);
     const products = await scraper.searchProducts(
       query as string,
       parseInt(page as string),
       parseInt(pageSize as string)
     );
 
+    // Perform ingredient analysis on products with ingredients
+    for (const product of products) {
+      if (product.ingredients && product.ingredients.length > 0) {
+        try {
+          // Analyze ingredient classification
+          const classification = await llmService.analyzeIngredients(product.ingredients);
+          const percentages = calculatePercentages(classification);
+
+          // Add analysis to product
+          product.ingredientAnalysis = {
+            classification,
+            percentages
+          };
+        } catch (error) {
+          console.error('Error analyzing ingredients for product:', product.id, error);
+          // Continue with other products if one fails
+        }
+      }
+    }
+
     // Cache the results
-    console.log('Caching results for query:', query);
     await cache.setCachedProduct(query as string, products);
 
     const response: SearchResponse = {
@@ -86,7 +112,10 @@ router.get('/products', async (req: Request, res: Response) => {
       message: error instanceof Error ? error.message : 'Failed to search products',
       code: 'SEARCH_ERROR'
     };
-    res.status(500).json(searchError);
+    // Check if response headers have already been sent
+    if (!res.headersSent) {
+      res.status(500).json(searchError);
+    }
   }
 });
 
@@ -106,6 +135,68 @@ router.post('/cache/clear', async (req: Request, res: Response) => {
     res.status(500).json({
       message: 'Failed to clear cache',
       code: 'CACHE_CLEAR_ERROR'
+    });
+  }
+});
+
+router.post('/analyze', async (req: Request, res: Response) => {
+  try {
+    const { ingredients } = req.body;
+    if (!ingredients || !Array.isArray(ingredients)) {
+      return res.status(400).json({ message: 'Ingredients array is required' });
+    }
+
+    const llmService = LLMService.getInstance();
+    const environmentalAnalyzer = EnvironmentalImpactAnalyzer.getInstance();
+
+    // Analyze ingredient classification
+    const classification = await llmService.analyzeIngredients(ingredients);
+    const percentages = calculatePercentages(classification);
+
+    // Analyze environmental impact
+    const environmentalAnalysis = await environmentalAnalyzer.analyzeEnvironmentalImpact(ingredients);
+    const overallImpact = environmentalAnalyzer.calculateOverallImpact(environmentalAnalysis);
+
+    // Create a temporary product object for validation
+    const tempProduct = {
+      id: 'temp',
+      name: 'Temporary Product',
+      brand: 'Temporary Brand',
+      url: '',
+      imageUrl: '',
+      price: 0,
+      ingredients,
+      ingredientAnalysis: {
+        classification,
+        percentages,
+        environmentalImpact: {
+          analysis: environmentalAnalysis,
+          overallImpact
+        }
+      }
+    };
+
+    // Format the analysis
+    const formattedAnalysis = IngredientFormatter.formatProductAnalysis(tempProduct);
+
+    // Validate the classification
+    const validationResult = ClassificationValidator.validateProduct(tempProduct);
+
+    res.json({
+      classification,
+      percentages,
+      environmentalImpact: {
+        analysis: environmentalAnalysis,
+        overallImpact
+      },
+      formattedAnalysis,
+      validationResult
+    });
+  } catch (error) {
+    console.error('Ingredient analysis error:', error);
+    res.status(500).json({
+      message: 'Failed to analyze ingredients',
+      code: 'ANALYSIS_ERROR'
     });
   }
 });

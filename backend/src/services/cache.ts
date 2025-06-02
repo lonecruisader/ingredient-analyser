@@ -31,13 +31,10 @@ export class CacheService {
 
   async getCachedProduct(query: string): Promise<Product[] | null> {
     try {
-      console.log('Checking cache for query:', query);
       const cachedData = await this.redis.get(this.getCacheKey(query));
       if (!cachedData) {
-        console.log('Cache miss for query:', query);
         return null;
       }
-      console.log('Cache hit for query:', query);
       return JSON.parse(cachedData);
     } catch (error) {
       console.error('Error getting cached product:', error);
@@ -47,14 +44,12 @@ export class CacheService {
 
   async setCachedProduct(query: string, products: Product[]): Promise<void> {
     try {
-      console.log('Setting cache for query:', query);
       await this.redis.set(
         this.getCacheKey(query),
         JSON.stringify(products),
         'EX',
         this.CACHE_TTL
       );
-      console.log('Successfully cached data for query:', query);
     } catch (error) {
       console.error('Error setting cached product:', error);
     }
@@ -62,9 +57,7 @@ export class CacheService {
 
   async clearCache(query: string): Promise<void> {
     try {
-      console.log('Clearing cache for query:', query);
       await this.redis.del(this.getCacheKey(query));
-      console.log('Successfully cleared cache for query:', query);
     } catch (error) {
       console.error('Error clearing cache:', error);
     }
@@ -72,13 +65,9 @@ export class CacheService {
 
   async clearAllCache(): Promise<void> {
     try {
-      console.log('Clearing all cache');
       const keys = await this.redis.keys('product:*');
       if (keys.length > 0) {
         await this.redis.del(...keys);
-        console.log('Successfully cleared all cache');
-      } else {
-        console.log('No cache entries to clear');
       }
     } catch (error) {
       console.error('Error clearing all cache:', error);

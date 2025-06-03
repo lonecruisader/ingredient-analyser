@@ -14,5 +14,12 @@ export default defineConfig({
         secure: false
       }
     }
+  },
+  define: {
+    'process.env.VITE_API_URL': JSON.stringify(
+      process.env.NODE_ENV === 'production' 
+        ? '/api'  // In production, use relative path for API
+        : 'http://localhost:3001'  // In development, use local server
+    )
   }
 }) 

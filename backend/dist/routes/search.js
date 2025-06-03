@@ -11,6 +11,7 @@ const classificationValidator_1 = require("../utils/classificationValidator");
 const router = (0, express_1.Router)();
 const scraper = new scraper_1.SephoraScraper();
 const cache = new cache_1.CacheService();
+const llmService = llm_1.LLMService.getInstance();
 // Test Redis connection
 router.get('/cache/test', async (req, res) => {
     try {
@@ -35,7 +36,6 @@ router.get('/cache/test', async (req, res) => {
 });
 router.get('/products', async (req, res) => {
     try {
-        console.log('Backend /products received request. Query params:', req.query);
         const { query, page = '1', pageSize = '20', forceRefresh = 'false' } = req.query;
         if (!query) {
             const error = {
@@ -44,26 +44,47 @@ router.get('/products', async (req, res) => {
             };
             return res.status(400).json(error);
         }
-        console.log('Processing search request:', { query, page, pageSize, forceRefresh });
         // Check cache first if not forcing refresh
         if (forceRefresh !== 'true') {
-            const cachedProducts = await cache.getCachedProduct(query);
-            if (cachedProducts) {
-                console.log('Returning cached results for query:', query);
-                const response = {
-                    products: cachedProducts,
-                    total: cachedProducts.length,
-                    page: parseInt(page),
-                    pageSize: parseInt(pageSize),
-                    cached: true
-                };
-                return res.json(response);
+            try {
+                const cachedProducts = await cache.getCachedProduct(query);
+                if (cachedProducts) {
+                    const response = {
+                        products: cachedProducts,
+                        total: cachedProducts.length,
+                        page: parseInt(page),
+                        pageSize: parseInt(pageSize),
+                        cached: true
+                    };
+                    return res.json(response);
+                }
+            }
+            catch (cacheError) {
+                console.error('Error retrieving or processing cached data:', cacheError);
+                // Continue to fetch from Sephora if cache fails
             }
         }
-        console.log('Cache miss, fetching from Sephora for query:', query);
         const products = await scraper.searchProducts(query, parseInt(page), parseInt(pageSize));
+        // Perform ingredient analysis on products with ingredients
+        for (const product of products) {
+            if (product.ingredients && product.ingredients.length > 0) {
+                try {
+                    // Analyze ingredient classification
+                    const classification = await llmService.analyzeIngredients(product.ingredients);
+                    const percentages = (0, percentageCalculator_1.calculatePercentages)(classification);
+                    // Add analysis to product
+                    product.ingredientAnalysis = {
+                        classification,
+                        percentages
+                    };
+                }
+                catch (error) {
+                    console.error('Error analyzing ingredients for product:', product.id, error);
+                    // Continue with other products if one fails
+                }
+            }
+        }
         // Cache the results
-        console.log('Caching results for query:', query);
         await cache.setCachedProduct(query, products);
         const response = {
             products,
@@ -80,7 +101,10 @@ router.get('/products', async (req, res) => {
             message: error instanceof Error ? error.message : 'Failed to search products',
             code: 'SEARCH_ERROR'
         };
-        res.status(500).json(searchError);
+        // Check if response headers have already been sent
+        if (!res.headersSent) {
+            res.status(500).json(searchError);
+        }
     }
 });
 // Add cache management endpoints

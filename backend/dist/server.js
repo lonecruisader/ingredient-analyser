@@ -32,7 +32,12 @@ const apiLimiter = (0, express_rate_limit_1.default)({
 // Apply rate limiting to all routes
 app.use(apiLimiter);
 // Middleware
-app.use((0, cors_1.default)());
+app.use((0, cors_1.default)({
+    origin: process.env.NODE_ENV === 'production'
+        ? [/\.vercel\.app$/, /\.vercel\.app$/] // Allow any Vercel deployment
+        : ['http://localhost:5173'],
+    credentials: true
+}));
 app.use(express_1.default.json());
 // Routes
 app.use('/api', search_1.default);
@@ -54,7 +59,5 @@ app.use((err, req, res, next) => {
         code: err.code || 'INTERNAL_SERVER_ERROR'
     });
 });
-// Start server
-app.listen(port, () => {
-    console.log(`Server is running on port ${port}`);
-});
+// For Vercel: export the app as default
+exports.default = app;
